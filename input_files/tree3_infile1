@@ -1,4 +1,5 @@
 Number of runs = 5000
+Inner = 50
 Effective population size = 6200
 Recombination = 0.000000000000000
 Mutation = 0.000000001000000

@@ -1,0 +1,9 @@
+Number of runs = 5000
+Inner = 50
+Effective population size = 6200
+Recombination = 0.000000000000000
+Mutation = 0.000000001000000
+Length = 500000.000000
+Stop = 11
+Fix seed = 1, 10
+#

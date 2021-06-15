@@ -258,126 +258,127 @@ int Build(long* TYPE, long* type2node, long* ntype, const double RHO, const doub
 	fprintf(stderr, "num of nodes = %ld, recombinations = %ld; mutations = %ld; non-recurrent = %ld; coalescence = %ld\n", nbranch, *num_rec, *num_mut, *num_nonrec, *num_coal);
 	fprintf(stderr, "Before calculate H_tau, the log(weight) = %lf\n", *logw);
 
-	/*Inner SIS*/
-	TYPE_st = long_vec_init((L + 1) * TYPE_MAX);
-	nanc_st = long_vec_init(L);
-	mut_by_site_st = long_vec_init(L);
-	for (z = 0; z < INNER; z++) {
-		/*copy type, ntype, nbranch, nanc, mut_by_site*/
-		nbranch_st = nbranch;
-		ntype_st = *ntype;
-		for (i = 0; i < ((L + 1) * ntype_st); i++) *(TYPE_st + i) = *(TYPE + i);
-		for (i = 0; i < L; i++) nanc_st[i] = nanc[i];
-		for (i = 0; i < L; i++) mut_by_site_st[i] = mut_by_site[i];
+	if (NumLineage > 1) {
+		/*Inner SIS*/
+		TYPE_st = long_vec_init((L + 1) * TYPE_MAX);
+		nanc_st = long_vec_init(L);
+		mut_by_site_st = long_vec_init(L);
+		for (z = 0; z < INNER; z++) {
+			/*copy type, ntype, nbranch, nanc, mut_by_site*/
+			nbranch_st = nbranch;
+			ntype_st = *ntype;
+			for (i = 0; i < ((L + 1) * ntype_st); i++) *(TYPE_st + i) = *(TYPE + i);
+			for (i = 0; i < L; i++) nanc_st[i] = nanc[i];
+			for (i = 0; i < L; i++) mut_by_site_st[i] = mut_by_site[i];
 
-		flag_MRCA = 0;
-		while (!flag_MRCA) {
-			eligible = 0;
-			t = 0;
-			for (i = 0; i < ntype_st; i++) {
-				/*coalescence*/
-				if (*(TYPE_st + (L + 1) * i + L) > 1) {
-					eligible += *(TYPE_st + (L + 1) * i + L);
-					*(elig_type + t) = i;
-					t++;
-				}
-				/*mutation*/
-				else {
-					/*multiplicity = 1*/
-					if (*(TYPE_st + (L + 1) * i + L) != 1) {
-						fprintf("Inner SIS error! Multiplicity = %ld.\n", *(TYPE_st + (L + 1) * i + L));
-						return(1);
+			flag_MRCA = 0;
+			while (!flag_MRCA) {
+				eligible = 0;
+				t = 0;
+				for (i = 0; i < ntype_st; i++) {
+					/*coalescence*/
+					if (*(TYPE_st + (L + 1) * i + L) > 1) {
+						eligible += *(TYPE_st + (L + 1) * i + L);
+						*(elig_type + t) = i;
+						t++;
 					}
+					/*mutation*/
 					else {
-						mut_elig = 0;
-						for (j = 0; j < L; j++) {
-							if ((mut_by_site_st[j] == 1) && (*(TYPE_st + (L + 1) * i + j) == 1)) mut_elig += 1;
+						/*multiplicity = 1*/
+						if (*(TYPE_st + (L + 1) * i + L) != 1) {
+							fprintf("Inner SIS error! Multiplicity = %ld.\n", *(TYPE_st + (L + 1) * i + L));
+							return(1);
 						}
-						if (mut_elig > 0) {
-							eligible += 1;
-							*(elig_type + t) = i;
-							t++;
-						}
+						else {
+							mut_elig = 0;
+							for (j = 0; j < L; j++) {
+								if ((mut_by_site_st[j] == 1) && (*(TYPE_st + (L + 1) * i + j) == 1)) mut_elig += 1;
+							}
+							if (mut_elig > 0) {
+								eligible += 1;
+								*(elig_type + t) = i;
+								t++;
+							}
 
+						}
 					}
 				}
-			}
-			if (eligible <= 0) {
-				fprintf(stdout, "Inner SIS error. Number of eligible sequences = %ld.\n", eligible);
-				return(1);
+				if (eligible <= 0) {
+					fprintf(stdout, "Inner SIS error. Number of eligible sequences = %ld.\n", eligible);
+					return(1);
+				}
+
+				/*start sampling a branch (type) out of the current configuration*/
+				u = eligible * runif();
+				i = 0;
+				while (u > 0) {
+					j = elig_type[i];
+					u -= *(TYPE_st + (L + 1) * j + L);
+					i++;
+				}
+				i--;
+
+				j = elig_type[i]; /*j is the chosen type*/
+
+				if (nbranch_st == 1) {
+					fprintf(stderr, "\nInner SIS is complete.\n");
+				}
+				else {
+					InnerSIS(TYPE_st, RHO, THETA, j, &ntype_st, &nbranch_st, nanc_st, &logw_inner, mut_by_site_st, &eligible);
+				}
+
+				/*check nbranch and ntype*/
+				tot = 0;
+				for (i = 0; i < ntype_st; i++) tot += *(TYPE_st + (L + 1) * i + L);
+				if ((long)tot != nbranch_st) {
+					fprintf(stdout, "Error in the number of branches. nbranch = %ld, sum of # types = %ld\n", nbranch_st, (long)tot);
+					return(1);
+				}
+
+				if (ntype_st > TYPE_MAX) {
+					fprintf(stdout, "Number of distinct haplotypes exceeds the maximum\n");
+					return(1);
+				}
+
+				/*flag_MRCA = 1 if the GMRCA is reached*/
+				flag_MRCA = 1;
+				for (j = 0; j < L; j++) {
+					flag_MRCA *= (*(nanc_st + j) == 1);
+				}
 			}
 
-			/*start sampling a branch (type) out of the current configuration*/
-			u = eligible * runif();
-			i = 0;
-			while (u > 0) {
-				j = elig_type[i];
-				u -= *(TYPE_st + (L + 1) * j + L);
-				i++;
-			}
-			i--;
 
-			j = elig_type[i]; /*j is the chosen type*/
-
-			if (nbranch_st == 1) {
-				fprintf(stderr, "\nInner SIS is complete.\n");
-			}
-			else {
-				InnerSIS(TYPE_st, RHO, THETA, j, &ntype_st, &nbranch_st, nanc_st, &logw_inner, mut_by_site_st, &eligible);
-			}
-
-			/*check nbranch and ntype*/
-			tot = 0;
-			for (i = 0; i < ntype_st; i++) tot += *(TYPE_st + (L + 1) * i + L);
-			if ((long)tot != nbranch_st) {
-				fprintf(stdout, "Error in the number of branches. nbranch = %ld, sum of # types = %ld\n", nbranch_st, (long)tot);
-				return(1);
-			}
-
-			if (ntype_st > TYPE_MAX) {
-				fprintf(stdout, "Number of distinct haplotypes exceeds the maximum\n");
-				return(1);
-			}
-
-			/*flag_MRCA = 1 if the GMRCA is reached*/
-			flag_MRCA = 1;
+			s1 = 0;
+			s2 = 0;
 			for (j = 0; j < L; j++) {
-				flag_MRCA *= (*(nanc_st + j) == 1);
+				if (*(TYPE_st + (L + 1) * 0 + j) == 0) s1 += 1;
+				if (*(TYPE_st + (L + 1) * 0 + j) == 1) s2 += 1;
 			}
+			logw_inner += (s1 * log(0.5) + s2 * log(1 - 0.5));
 		}
-		
+		logw_inner /= INNER;
+		*logw += logw_inner;
+		//fprintf(stderr, "SIS within SIS approach generates unnormalised weight = %lf.\n", *logw);
 
+		free(TYPE_st);
+		free(nanc_st);
+		free(mut_by_site_st);
+	}
+	else {
 		s1 = 0;
 		s2 = 0;
 		for (j = 0; j < L; j++) {
-			if (*(TYPE_st + (L + 1) * 0 + j) == 0) s1 += 1;
-			if (*(TYPE_st + (L + 1) * 0 + j) == 1) s2 += 1;
+			if (*(TYPE + (L + 1) * 0 + j) == 0) s1 += 1;
+			if (*(TYPE + (L + 1) * 0 + j) == 1) s2 += 1;
 		}
-		logw_inner += (s1 * log(0.5) + s2 * log(1 - 0.5));
+		*logw += (s1 * log(0.5) + s2 * log(1 - 0.5));
+		//fprintf(stderr, "Unnormalised weight = %lf.\n", *logw);
 	}
-	logw_inner /= INNER;
-	*logw += logw_inner;
-	fprintf(stderr, "SIS within SIS approach generates unnormalised weight = %lf.\n", *logw);
-
-
-	
-	/*s1 = 0;
-	s2 = 0;
-	for (j = 0; j < L; j++) {
-		if (*(TYPE + (L + 1) * 0 + j) == 0) s1 += 1;
-		if (*(TYPE + (L + 1) * 0 + j) == 1) s2 += 1;
-	}
-	*logw += (s1 * log(0.5) + s2 * log(1 - 0.5));*/
-
-	
 
     free(nanc);
     free(nanc_copy);
 	free(newseq);
 	free(elig_type);
-	free(TYPE_st);
-	free(nanc_st);
-	free(mut_by_site_st);
     
     return(0);
 }
